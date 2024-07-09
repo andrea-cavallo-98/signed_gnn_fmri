@@ -10,8 +10,8 @@ class signedGCN(torch.nn.Module):
     def __init__(self, in_channels, hid_channels, out_channels):
         super().__init__()
 
-        self.gcn_layer1 = GCNConv(in_channels, hid_channels)
-        self.gcn_layer2 = GCNConv(hid_channels, out_channels)
+        self.gcn_layer1 = SignedGCNConv(in_channels, hid_channels)
+        self.gcn_layer2 = SignedGCNConv(hid_channels, out_channels)
         self.mlp = torch.nn.Linear(out_channels, 2)
         self.sigma = torch.nn.LeakyReLU()
 
@@ -26,7 +26,7 @@ class signedGCN(torch.nn.Module):
 
 
 
-class GCNConv(MessagePassing):
+class SignedGCNConv(MessagePassing):
     def __init__(self, in_channels, out_channels):
         super().__init__(aggr='add')  # "Add" aggregation (Step 5).
         self.lin = Linear(in_channels, out_channels, bias=False)
@@ -55,3 +55,26 @@ class GCNConv(MessagePassing):
 
         # Step 4: Normalize node features.
         return norm.view(-1, 1) * x_j
+
+
+class GCN(torch.nn.Module):
+    def __init__(self, in_channels, hid_channels, out_channels):
+        super().__init__()
+
+        self.gcn_layer1 = GCNConv(in_channels, hid_channels)
+        self.gcn_layer2 = GCNConv(hid_channels, out_channels)
+        self.mlp = torch.nn.Linear(out_channels, 2)
+        self.sigma = torch.nn.ReLU()
+
+    def forward(self, data):
+        x, edge_index, edge_weights, batch = data.x, data.edge_index, data.edge_weight, data.batch
+        edge_weights[edge_weights < 0] = 0
+        x = self.sigma(self.gcn_layer1(x, edge_index, edge_weights))
+        x = self.sigma(self.gcn_layer2(x, edge_index, edge_weights))
+        x = global_mean_pool(x, batch)  # Global Mean Pooling
+        # x = F.dropout(x, p=0.5, training=self.training)
+        x = self.mlp(x)
+        return x
+
+
+

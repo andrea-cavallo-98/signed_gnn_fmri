@@ -4,7 +4,7 @@ from torch_geometric.utils import dense_to_sparse
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from nilearn.connectome import ConnectivityMeasure
-from signed_gcn import signedGCN
+from signed_gcn import signedGCN, GCN
 from sklearn.model_selection import train_test_split
 
 
@@ -12,6 +12,7 @@ def get_data_loader_from_matrices(matrices_list, x, threshold, y):
   # Create a list of PyG Data objects
   data_list = []
   for i, adj in enumerate(matrices_list):
+      adj[np.abs(adj) < threshold] = 0
       edge_index, edge_weight = dense_to_sparse(torch.from_numpy(adj))
       data = Data(x = x[i].float(), edge_index=edge_index, 
       edge_weight = edge_weight.float(), y=y[i])
@@ -38,21 +39,23 @@ X_train, X_test, y_train, y_test = train_test_split(
 cov_matrices_train = cov_measure.fit_transform(X_train)
 cov_matrices_test = cov_measure.fit_transform(X_test)
 
+threshold = 0.05
+
 train_loader = get_data_loader_from_matrices(cov_matrices_train, 
-torch.FloatTensor(X_train).permute((0,2,1)), 0.1, y_train)
+torch.FloatTensor(X_train).permute((0,2,1)), threshold, y_train)
 
 test_loader = get_data_loader_from_matrices(cov_matrices_test, 
-torch.FloatTensor(X_test).permute((0,2,1)), 0.1, y_test)
+torch.FloatTensor(X_test).permute((0,2,1)), threshold, y_test)
 
 num_classes = 2
-print(X.shape)
-gcn_model = signedGCN(X.shape[1], 24, num_classes)
+
+gcn_model = signedGCN(X.shape[1], 64, num_classes)
 
 # Define loss and optimizer
 criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor([2.34848485, 0.6352459]))
 optimizer = torch.optim.Adam(gcn_model.parameters(), lr=0.01)
 
-for epoch in range(100):
+for epoch in range(40):
     gcn_model.train()
     losses = 0
     for data in train_loader:
